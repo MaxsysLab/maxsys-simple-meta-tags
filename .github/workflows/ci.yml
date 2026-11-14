@@ -1,0 +1,121 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege by default; each job opts into what it needs.
+permissions: {}
+
+jobs:
+  php-lint:
+    name: PHP ${{ matrix.php }} syntax
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: Lint every PHP file
+        run: find . -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  # The WordPress plugin directory's own checker, run on the folder as it is distributed.
+  plugin-check:
+    name: WordPress Plugin Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Build the plugin folder as it is distributed
+        run: |
+          mkdir -p build
+          git archive --format=tar --prefix=maxsys-simple-meta-tags/ HEAD | tar -x -C build
+          ls -la build/maxsys-simple-meta-tags
+      - uses: wordpress/plugin-check-action@10857da14b6c2246d15402b3e69f777edcf8c12e # v1.1.9
+        with:
+          build-dir: ./build/maxsys-simple-meta-tags
+
+  # Developer Certificate of Origin: every commit in a pull request carries a
+  # Signed-off-by line (git commit -s). See CONTRIBUTING.md.
+  dco:
+    name: Sign-off (DCO)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Every commit is signed off
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          fail=0
+          for c in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            if ! git log -1 --format=%B "$c" | grep -Eq '^Signed-off-by: .+ <.+@.+>$'; then
+              echo "Missing Signed-off-by: $(git log -1 --format='%h %s' "$c")"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+  # gitleaks is run from its pinned release, checksum verified. The gitleaks GitHub
+  # Action needs a licence key for organization repositories, so it is not used.
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -fsSL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf gitleaks.tar.gz -C "$RUNNER_TEMP/gitleaks" gitleaks
+          rm gitleaks.tar.gz
+          "$RUNNER_TEMP/gitleaks/gitleaks" git --redact --no-banner .
+
+  # Supply chain: every action is referenced by a full commit SHA, never a floating tag.
+  pin-check:
+    name: Actions are pinned
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: pinact
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PINACT_SHA256: 8fcbf1b3e95551c82fd995535e3c1defa70e23299ce36eb3afd6c98778de6ca0
+        run: |
+          curl -fsSL -o pinact.tar.gz https://github.com/suzuki-shunsuke/pinact/releases/download/v4.1.0/pinact_linux_amd64.tar.gz
+          echo "${PINACT_SHA256}  pinact.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/pinact"
+          tar -xzf pinact.tar.gz -C "$RUNNER_TEMP/pinact" pinact
+          rm pinact.tar.gz
+          "$RUNNER_TEMP/pinact/pinact" run --check

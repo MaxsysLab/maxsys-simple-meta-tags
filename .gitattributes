@@ -1,0 +1,10 @@
+# One line ending everywhere.
+* text=auto eol=lf
+
+# Files that are for development only and are left out of the distributed zip.
+/.github          export-ignore
+/.gitattributes   export-ignore
+/.gitignore       export-ignore
+/README.md        export-ignore
+/CONTRIBUTING.md  export-ignore
+/SECURITY.md      export-ignore

@@ -1,4 +1,6 @@
 jQuery(document).ready(function($) {
+    var strings = window.maxsysMetaTags || {};
+
     // This single function handles the media uploader for any button with the correct class
     $('body').on('click', '.maxsys-meta-upload-button', function(e) {
         e.preventDefault();
@@ -9,8 +11,8 @@ jQuery(document).ready(function($) {
         const imagePreviewContainer = imageInput.parent();
 
         const uploader = wp.media({
-            title: 'Select a Social Sharing Image',
-            button: { text: 'Use this image' },
+            title: strings.uploaderTitle || 'Select a Social Sharing Image',
+            button: { text: strings.uploaderButton || 'Use this image' },
             multiple: false
         }).on('select', function() {
             const attachment = uploader.state().get('selection').first().toJSON();
@@ -21,7 +23,9 @@ jQuery(document).ready(function($) {
             if (preview.length) {
                 preview.attr('src', attachment.url);
             } else {
-                imageInput.parent().after('<p><img src="' + attachment.url + '" style="max-width: 200px; height: auto; margin-top:10px;"></p>');
+                const img = $('<img>', { src: attachment.url, alt: '' })
+                    .css({ 'max-width': '200px', height: 'auto', 'margin-top': '10px' });
+                imageInput.parent().after($('<p>').append(img));
             }
         }).open();
     });
